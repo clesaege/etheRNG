@@ -60,9 +60,6 @@ contract LowInfluenceRNG {
         return uint256(keccak256(getRandom(_startBlock, _nbBlock, _nbBit),msg.sender));
     }
 
-    function testGas(uint256 _startBlock, uint8 _nbBlock, uint8 _nbBit) returns (uint256 random) {
-        return uint256(keccak256(getRandom(_startBlock, _nbBlock, _nbBit),msg.sender));
-    }
 }
 
 
