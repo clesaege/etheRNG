@@ -10,7 +10,7 @@ contract SequentialPoWRNG {
     uint public depositToFee=1000; // Submitting a result or challenge costs depositToFee * randomFee.
     uint public currentDifficulty; // The amount of time the seed should be hashed for next RNG.
     uint public jackpot; // Ether which would be given to those who manage to find the result before computeBlocks.
-    
+    uint public challengeTimePerStep; // The time to respond a challenge per answer.
     
     struct RN {
         bytes32 seed;
@@ -18,6 +18,7 @@ contract SequentialPoWRNG {
         uint startTime; // The block where the RNG was required.
         uint result; // Resulting RNG or 0 before it is available.
         uint payout; // The amount to be paid to the first party who gives the result and the other split by token.
+        uint firstSubmission; // The first submission which has not been challenged.
         Submission[] submissions; // Submitted results.
     }
     
@@ -113,8 +114,7 @@ contract SequentialPoWRNG {
         submission.result=_result;
         
     }
-    
-    
+
     
     // Constant functions.
     
@@ -123,5 +123,7 @@ contract SequentialPoWRNG {
      */
     function commitment(bytes32 _result) constant returns(bytes32) {return keccak256(_result,msg.sender);}
 }
+
+
 
 
