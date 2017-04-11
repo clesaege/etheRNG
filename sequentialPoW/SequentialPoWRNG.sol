@@ -21,17 +21,20 @@ contract SequentialPoWRNG {
         uint result; // Resulting RNG or 0 before it is available.
         uint payout; // The amount to be paid to the first party who gives the result and the other split by token.
         uint firstSubmission; // The first submission which is valid.
+        uint atStakeSubmission; // The sum of deposits of submissions that were not invalidated.
+        uint differentResults; // Number of different results.
+        mapping (bytes32 => uint) resultCount; // resultCount[result] is the number of valid submission with result.
         Submission[] submissions; // Submitted results.
     }
     
     struct Submission {
         address submitter;
         bytes32 commitment; // Allow submitting a hashed of the result and your address to prevent transaction ordering vulnerabilities. Note that people knowing the result can know if you submitted the right result.
-        bytes32 result; // The result of applying repeated hash.
+        bytes32 result; // The result of applying repeated hash. If the commitment scheme is used, it is 0 before the value is revealed.
         uint deposit; // Deposit to be given back if the party has given the right value.
         Challenge[] challenges; // Challenges by people indicating that the result is false.
         bool invalidated; // True if a challenger managed to win a challenge or the submitter has been timed out.
-        uint atStakeChallenge; // The sum of deposits in challenges of this submission. If this is 0, all challenges have been wiped out.
+        uint atStakeChallenge; // The sum of deposits of challenges that were not invalidated of this submission. If this is 0, all challenges have been wiped out.
         uint challengerReward; // The total amount claimable by the challengers who were not invalidated.
     }
     
@@ -89,6 +92,44 @@ contract SequentialPoWRNG {
         rn.seed=keccak256(rn.seed,_personalSeed);
     }
     
+    /** Increase the deposit of a submission.
+     *  @param _rn Random number the submission relates to.
+     *  @param _submission The submission.
+     *  @param _value The amount to increase.
+     */
+    function increaseSubmissionDeposit(RN _rn, Submission _submission, uint _value) internal {
+        _rn.atStakeSubmission+=_value;
+        _submission.deposit+=_value;
+    }
+    
+    /** Decrease the deposit of a submission.
+     *  @param _rn Random number the submission relates to.
+     *  @param _submission The submission.
+     */
+    function removeSubmissionDeposit(RN storage _rn, Submission storage _submission) internal {
+        _rn.atStakeSubmission-=_submission.deposit;
+        _submission.deposit-=0;
+    }
+    
+    /** Add a result, keep track of the amount of different results.
+     *  @param _rn The random number the result is added.
+     *  @param _result The added result.
+     */
+    function addResult(RN storage _rn, bytes32 _result) internal {
+        if (_rn.resultCount[_result]==0) // If this is a new result, increment the count.
+            _rn.differentResults+=1;
+        _rn.resultCount[_result]+=1;
+    }
+    
+    /** Remove a result, keep track of the amount of different results.
+     *  @param _rn The random number the result is added.
+     *  @param _result The added result.
+     */
+    function removeResult(RN storage _rn, bytes32 _result) internal {
+        _rn.resultCount[_result]-=1;
+        if (_rn.resultCount[_result]==0) // If this was the last, decrement the count.
+            _rn.differentResults-=1;
+    }
     
     /** Give the result of a random number directly (without using commitment).
      *  It is better to give the result directly if the right result has already been given.
@@ -104,12 +145,14 @@ contract SequentialPoWRNG {
         Submission submission=rn.submissions[idSubmission];
         submission.submitter=msg.sender;
         submission.result=_result;
-        submission.deposit=msg.value;
+        increaseSubmissionDeposit(rn,submission,msg.value);
         
         return idSubmission;
     }
     
-    /** Give a commitment of the result. 
+
+    
+    /** Give a commitment of the result.
      *  @param _idRN ID of the random number.
      *  @param _commitment The hash of the result and the address of the sender.
      *  @return idSubmission The ID of the submission created.
@@ -122,7 +165,7 @@ contract SequentialPoWRNG {
         Submission submission=rn.submissions[idSubmission];
         submission.submitter=msg.sender;
         submission.commitment=_commitment;
-        submission.deposit=msg.value;
+        increaseSubmissionDeposit(rn,submission,msg.value);
         
         return idSubmission;
     }
@@ -234,21 +277,23 @@ contract SequentialPoWRNG {
         assert(challenge.begin!=challenge.end); // Make sure not to reduce the space to a single point. When the distance is only one user need to call endChallenge.
     }
     
-        /** Invalidate a submission.
+    /** Invalidate a submission.
      *  One fourth of the deposit is transfered to the jackpot.
      *  One fourth is burned.
      *  The other half can be claimed by the challengers in proportion of their deposit.
+     *  @param _rn Random number of the invalidated submission.
      *  @param _submission The submission which was invalidated.
      */
-    function invalidateSubmission(Submission _submission) internal {
+    function invalidateSubmission(RN storage _rn, Submission storage _submission) internal {
         require(!_submission.invalidated);
         
-        _submission.invalidated=true; // Set the submission as invalid.
+        _submission.invalidated=true;
         
+        // Note that some wei might be lost due to rounding but it is not an issue.
         jackpot+=_submission.deposit/4;
         BURN.transfer(_submission.deposit/4);
         _submission.challengerReward=_submission.deposit/2;
-        _submission.deposit=0;
+        removeSubmissionDeposit(_rn,_submission);
     }
     
     /** Invalidate a challenge.
@@ -256,18 +301,19 @@ contract SequentialPoWRNG {
      *  Transfer one fourth to the jackpot.
      *  The remaining is burned.
      *  This ensure that even if one party is always winning the jackopt, it can't make false challenges for free.
+     *  @param _rn The random number of the submission the challenge belongs to.
      *  @param _submission The submission the challenge was challenging.
      *  @param _challenge The challenge which is invalidate.
      */
-    function invalidateChallenge(Submission _submission, Challenge _challenge) internal {
+    function invalidateChallenge(RN storage _rn, Submission storage _submission, Challenge storage _challenge) internal {
         require(!_challenge.invalidated);
         
-        _challenge.invalidated=true; // Set the challenge as invalid.
+        _challenge.invalidated=true;
         _submission.atStakeChallenge-=_challenge.deposit;
         
         // Transfert the deposit to the submission and the jackpot.
-        // Note that a wei might be lost due to rounding but it is not an issue.
-        _submission.deposit+=(_challenge.deposit/2);
+        // Note that some wei might be lost due to rounding but it is not an issue.
+        increaseSubmissionDeposit(_rn,_submission,_challenge.deposit/2);
         jackpot+=(_challenge.deposit/4); 
         BURN.transfer(_challenge.deposit/4);
         _challenge.deposit=0;
@@ -289,9 +335,9 @@ contract SequentialPoWRNG {
         require((challenge.end-challenge.begin)==1); // We can only call this function when there is only two values remaing in the search space.
         
         if(keccak256(challenge.beginValue)==challenge.endValue)
-            invalidateChallenge(submission,challenge); // The submitter passed the challenge, so the challenger failed.
+            invalidateChallenge(rn,submission,challenge); // The submitter passed the challenge, so the challenger failed.
         else // The challenger won his challenge, so the submitter failed.
-            invalidateSubmission(submission);
+            invalidateSubmission(rn,submission);
     }
     
     
@@ -307,10 +353,25 @@ contract SequentialPoWRNG {
         
         require(!submission.invalidated);
         require(!challenge.invalidated);
+        
         require(challenge.midValue==0); // It is the turn of the submitter to respond.
         require(now-challenge.lastInteractionTime>challenge.timeSubmitter);
         
-        invalidateSubmission(submission);
+        invalidateSubmission(rn,submission);
+    }
+    
+    /** Invalidate a submission the user failed to reveal.
+     *  @param _idRN ID of the random number.
+     *  @param _idSubmission ID of the submission.
+     */
+    function invalidateSubmissionNotRevealed(uint _idRN, uint _idSubmission) {
+        RN rn = RNs[_idRN];
+        Submission submission=rn.submissions[_idSubmission];
+        
+        require(!submission.invalidated);
+        require(submission.result==0);
+        
+        invalidateSubmission(rn,submission);
     }
     
     /** Time out a challenger.
@@ -323,15 +384,43 @@ contract SequentialPoWRNG {
         Submission submission=rn.submissions[_idSubmission];
         Challenge challenge=submission.challenges[_idChallenge];
         
-        require(!challenge.invalidated);
         require(!submission.invalidated);
+        require(!challenge.invalidated);
         
         require(challenge.midValue!=0); // It is the turn of the challenger to respond.
         require(now-challenge.lastInteractionTime>challenge.timeChallenger);
         
-        invalidateChallenge(submission,challenge);
+        invalidateChallenge(rn,submission,challenge);
     }
     
+    /** Get the deposit of a challenge back and get a part of the submission deposit.
+     *  You can only do it when the challenge is invalidated (no matter who did it).
+     *  The amout given is proportional to the deposit you made. Note that splitting equally is not possible because else users would be incentivized in making multiple challenges.
+     *  @param _idRN ID of the random number.
+     *  @param _idSubmission ID of the submission.
+     *  @param _idChallenge ID of the challenge.
+     */
+    function getChallengeValue(uint _idRN, uint _idSubmission, uint _idChallenge) {
+        RN rn = RNs[_idRN];
+        Submission submission=rn.submissions[_idSubmission];
+        Challenge challenge=submission.challenges[_idChallenge];
+        
+        require(!challenge.invalidated);
+        require(submission.invalidated);
+        require(msg.sender==challenge.challenger);
+        
+        uint amountToSend=challenge.deposit+((challenge.deposit*submission.challengerReward)/submission.atStakeChallenge);
+        challenge.deposit=0;
+        challenge.challenger.transfer(amountToSend);
+    }
+    
+    /** Get the deposit of a submission back and a part.
+     *  @param _idRN ID of the random number.
+     *  @param _idSubmission ID of the submission.
+     */
+    function getSubmissionValue(uint _idRN, uint _idSubmission) {
+        // TODO
+    }
     
     // Constant functions 
     
