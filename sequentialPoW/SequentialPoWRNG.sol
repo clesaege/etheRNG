@@ -1,5 +1,6 @@
 /** @title Random number generator using sequential proof of work.
  *  @author Clément Lesaege - <clement@lesaege.com>
+ *  This contract has not undertaken a bug bounty program yet. Use at your own risk.
  */
 
 pragma solidity ^0.4.10;
@@ -309,7 +310,7 @@ contract SequentialPoWRNG {
         removeResult(_rn,_submission.result);
     }
     
-    /** @devInvalidate a challenge.
+    /** @dev Invalidate a challenge.
      *  One fourth is burned.
      *  Transfer three fourth of the challenger deposit to the submitter deposit.
      *  This ensure that even if one party is always winning the jackopt, it can't make false challenges for free.
