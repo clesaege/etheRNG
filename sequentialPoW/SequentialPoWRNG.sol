@@ -427,7 +427,7 @@ contract SequentialPoWRNG {
         
         uint submitterPayout=(rn.payout*submission.deposit)/rn.atStakeSubmission; // The part of the payout proportional to the deposit.
         if (rn.firstSubmission==_idSubmission) // If the submitter was the first give him the first submitter reward.
-            submitterPayout+=rn.payout;
+            submitterPayout+=resolveFirstSubmission(_rn,_submission);
             
         submission.deposit=0; // The deposit has been claim, but don't update rn.atStakeSubmission in order to make computing parts of the other users simpler.
         submission.submitter.transfer(submitterPayout);
@@ -444,9 +444,10 @@ contract SequentialPoWRNG {
         uint timeFromStart = _submission.time-_rn.startTime; // The time the first submitter took.
         if (_rn.difficulty==currentDifficulty // There hasn't been any difficulty change in between.
             && computeTargetTime > timeFromStart) { // The submission was submitted before the target time. So the submitter will get part of the jackpot.
-                additionalPayout+=((computeTargetTime-timeFromStart)*jackpot)/computeTargetTime; // Give a part of the jackpot proportional to the time ahead.
+                uint jackpotPart=((computeTargetTime-timeFromStart)*jackpot)/computeTargetTime;
+                additionalPayout+=jackpotPart; // Give a part of the jackpot proportional to the time ahead.
+                jackpot-=jackpotPart;
                 currentDifficulty=(computeTargetTime*currentDifficulty)/timeFromStart;
-                // TODO: Set new difficulty.
             }
         return additionalPayout;
     }
