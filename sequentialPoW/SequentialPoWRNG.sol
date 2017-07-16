@@ -427,7 +427,7 @@ contract SequentialPoWRNG {
         
         uint submitterPayout=(rn.payout*submission.deposit)/rn.atStakeSubmission; // The part of the payout proportional to the deposit.
         if (rn.firstSubmission==_idSubmission) // If the submitter was the first give him the first submitter reward.
-            submitterPayout+=resolveFirstSubmission(_rn,_submission);
+            submitterPayout+=resolveFirstSubmission(rn,submission);
             
         submission.deposit=0; // The deposit has been claim, but don't update rn.atStakeSubmission in order to make computing parts of the other users simpler.
         submission.submitter.transfer(submitterPayout);
