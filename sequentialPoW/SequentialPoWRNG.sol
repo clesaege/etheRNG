@@ -371,19 +371,6 @@ contract SequentialPoWRNG {
         invalidateSubmission(rn,submission);
     }
     
-    /** @dev Invalidate a submission the user failed to reveal.
-     *  @param _idRN ID of the random number.
-     *  @param _idSubmission ID of the submission.
-     */
-    function invalidateSubmissionNotRevealed(uint _idRN, uint _idSubmission) {
-        RN rn = RNs[_idRN];
-        Submission submission=rn.submissions[_idSubmission];
-        
-        require(!submission.invalidated);
-        require(submission.result==0);
-        
-        invalidateSubmission(rn,submission);
-    }
     
     /** @dev Time out a challenger.
      *  @param _idRN ID of the random number.
