@@ -119,7 +119,7 @@ contract SequentialPoWRNG {
      */
     function removeSubmissionDeposit(RN storage _rn, Submission storage _submission) internal {
         _rn.atStakeSubmission-=_submission.deposit;
-        _submission.deposit-=0;
+        _submission.deposit=0;
     }
     
     /** @dev Add a result, keep track of the amount of different results.
